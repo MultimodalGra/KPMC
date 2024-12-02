@@ -43,15 +43,16 @@ class fs_dta(object):
         self.train_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=self.num_workers)
         self.test_loader = DataLoader(test_dataset, batch_size=100, shuffle=False, num_workers=self.num_workers)
 
-        if len(self._multiple_gpus) > 1:
-            print(self._multiple_gpus)
-            self._network = nn.DataParallel(self._network, self._multiple_gpus)
+        # if len(self._multiple_gpus) > 1:
+        #     print(self._multiple_gpus)
+        #     self._network = nn.DataParallel(self._network, self._multiple_gpus)
         self._train(self.train_loader, self.test_loader, self.train_loader_all, train_dataset_all, train_dataset_all_)
 
-        if len(self._multiple_gpus) > 1:
-            self._network = self._network.module
+        # if len(self._multiple_gpus) > 1:
+        #     self._network = self._network.module
 
     def _train(self, train_loader, test_loader, train_loader_all, train_dataset_all, train_dataset_all_):
+
         self._network.to(self._device)
 
         for name, param in self._network.named_parameters():
@@ -125,7 +126,7 @@ class fs_dta(object):
             inputs, targets = inputs.to(self._device), targets.to(self._device)
             with torch.no_grad():
                 #outputs = model(inputs, target=None, p_target=None)
-                outputs = model.module.inference(inputs, target=None, p_target=None)
+                outputs = model.inference(inputs, target=None, p_target=None)
                 logits = outputs['logits']
             preds = torch.max(logits, dim=1)[1]
             correct += preds.eq(targets.expand_as(preds)).cpu().sum()

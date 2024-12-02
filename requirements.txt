@@ -22,7 +22,7 @@ contextvars==2.4
 cryptacular==1.6.2
 cryptography==40.0.2
 cycler==0.11.0
-dataclasses==0.8
+dataclasses==0.6
 datasets==2.4.0
 decorator==4.4.2
 defusedxml==0.7.1
@@ -51,7 +51,7 @@ immutables==0.19
 importlib-metadata==4.8.3
 importlib-resources==5.4.0
 ipdb==0.13.13
-ipython==7.16.3
+ipython==7.31.1
 ipython-genutils==0.2.0
 jedi==0.17.2
 jeepney==0.7.1
@@ -84,7 +84,7 @@ plaster==1.0
 plaster-pastedeploy==0.7
 prettytable==2.5.0
 prompt-toolkit==3.0.36
-protobuf==4.21.0
+protobuf==4.21.1
 psutil==5.9.5
 ptyprocess==0.7.0
 pyarrow==6.0.1
@@ -127,8 +127,8 @@ smmap==5.0.0
 SQLAlchemy==1.4.39
 tabulate==0.8.10
 tenacity==8.2.2
-tensorboard==2.10.1
-tensorboard-data-server==0.6.1
+tensorboard==2.12.0
+tensorboard-data-server==0.7.0
 tensorboard-plugin-wit==1.8.1
 tensorboardX==2.6.2.2
 thop==0.1.1.post2209072238
@@ -136,7 +136,6 @@ threadpoolctl==3.1.0
 tifffile==2020.9.3
 timm==0.6.12
 tokenizers==0.10.3
-tomli==1.2.3
 torch==1.8.0+cu111
 torchaudio==0.8.0
 torchprofile==0.0.4

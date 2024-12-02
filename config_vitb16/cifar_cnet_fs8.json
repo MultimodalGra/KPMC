@@ -7,7 +7,7 @@
     "embd_dim" : 768,
     "prompt_length" : 8,
     "prompt_length_c" : 2,
-    "device": ["0","1"],
+    "device": "0",
     "seed": [1993],
     "init_epoch" : 10,
     "init_lr" : 0.003,

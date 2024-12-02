@@ -1,6 +1,9 @@
+import torch
 import json
 import argparse
 from trainer import train
+import sys
+import os
 
 def main():
     args = setup_parser().parse_args()
@@ -8,7 +11,6 @@ def main():
     args = vars(args)  # Converting argparse Namespace to a dict.
     args.update(param)  # Add parameters from json
     train(args)
-
 
 def load_json(settings_path):
     with open(settings_path) as data_file:

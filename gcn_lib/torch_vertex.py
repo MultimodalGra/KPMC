@@ -8,6 +8,7 @@ from .torch_edge import DenseDilatedKnnGraph
 from .pos_embed import get_2d_relative_pos_embed
 import torch.nn.functional as F
 from timm.models.layers import DropPath
+from torch_geometric.nn import GATConv
 
 
 class MRConv2d(nn.Module):
@@ -55,15 +56,36 @@ class GraphSAGE(nn.Module):
     def __init__(self, in_channels, out_channels, act='relu', norm=None, bias=True):
         super(GraphSAGE, self).__init__()
         self.nn1 = BasicConv([in_channels, in_channels], act, norm, bias)
+
+        # sage 添加代码
+        # pooling MLP
+        self.nn_pooling = nn.Sequential(
+            nn.Linear(in_channels, in_channels, bias=bias),
+            nn.ReLU() if act == 'relu' else nn.Identity()
+        )
+
         self.nn2 = BasicConv([in_channels*2, out_channels], act, norm, bias)
 
     def forward(self, x, edge_index, y=None):
+        # Transform self features using nn1
+        x = self.nn1(x)
+
+        # Fetch neighbors' features
         if y is not None:
-            x_j = batched_index_select(y, edge_index[0])
+            x_j = batched_index_select(y, edge_index[0])  # Fetch neighbors' features from y
         else:
-            x_j = batched_index_select(x, edge_index[0])
-        x_j, _ = torch.max(self.nn1(x_j), -1, keepdim=True)
-        return self.nn2(torch.cat([x, x_j], dim=1))
+            x_j = batched_index_select(x, edge_index[0])  # Fetch neighbors' features from x
+
+        # Pooling aggregator with Mean
+        x_j = x_j.transpose(1,3)
+        x_j = self.nn_pooling(x_j)  # Transform neighbors' features using MLP
+        x_j = x_j.transpose(1,3)
+
+        x_j,_ = torch.max(x_j, dim=-1, keepdim=True)  # Mean pooling along neighbors
+
+        # Combine transformed self features with aggregated neighbors' features
+        out = self.nn2(torch.cat([x, x_j], dim=1))  # Concatenate and process
+        return out
 
 
 class GINConv2d(nn.Module):
@@ -84,6 +106,54 @@ class GINConv2d(nn.Module):
         x_j = torch.sum(x_j, -1, keepdim=True)
         return self.nn((1 + self.eps) * x + x_j)
 
+class GATConv2d(nn.Module):
+    """
+    GAT Graph Convolution
+    """
+    def __init__(self,in_channels,out_channels,num_heads=2,dropout=0.6):
+        super(GATConv2d,self).__init__()
+        self.num_heads = num_heads
+        self.out_channels = out_channels
+
+        head_out_channels = out_channels // num_heads
+        self.gat_conv = GATConv(in_channels,head_out_channels,heads=num_heads,dropout=dropout)
+        self.relu = torch.nn.ReLU()
+
+        self.fc = nn.Linear(out_channels,out_channels)
+    def forward(self,x,edge_index,y=None):
+        nn_idx = edge_index[0]  # b,n,k  n个点的top k邻居
+
+        x = x.squeeze(-1).transpose(-1,-2) # x:(b,feature,num)-> (b,num,f)
+        feature = x.shape[2]
+        batch_size, num_nodes, k = nn_idx.shape
+        row = []
+        col = []
+
+        # For each sample in the batch
+        for i in range(batch_size):
+            for j in range(num_nodes):
+                # Node j's neighbors based on the KNN indices
+                neighbors = nn_idx[i, j]  # These are the k-nearest neighbors of node j
+                for neighbor in neighbors:
+                    row.append(j)  # The center node (j)
+                    col.append(neighbor)  # The neighboring node
+
+        edge_index = torch.tensor([row, col], dtype=torch.long).to(nn_idx.device) # 2,num_edges
+
+        x = x.reshape(-1,feature)
+        x = self.gat_conv(x,edge_index)
+        x = self.relu(x)
+
+        x = x.reshape(batch_size,self.num_heads *(self.out_channels // self.num_heads),num_nodes)
+
+        x = x.permute(0,2,1)
+        x = self.fc(x)
+
+
+        x = x.reshape(batch_size,self.out_channels,int(num_nodes**0.5),int(num_nodes**0.5))
+
+        return x
+
 
 class GraphConv2d(nn.Module):
     """
@@ -99,6 +169,10 @@ class GraphConv2d(nn.Module):
             self.gconv = GraphSAGE(in_channels, out_channels, act, norm, bias)
         elif conv == 'gin':
             self.gconv = GINConv2d(in_channels, out_channels, act, norm, bias)
+        elif conv == 'gat':
+            self.gconv = GATConv2d(in_channels,out_channels)
+        # elif conv == 'gated':
+        #     self.gconv = GatedGCNConv2d(in_channels,out_channels,act,norm,bias)
         else:
             raise NotImplementedError('conv:{} is not supported'.format(conv))
 

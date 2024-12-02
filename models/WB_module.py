@@ -5,6 +5,7 @@ import torch.nn.functional as F
 from torch.nn import Sequential as Seq
 from gcn_lib import Grapher, act_layer
 
+
 from timm.data import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 from timm.models.helpers import load_pretrained
 from timm.models.layers import DropPath, to_2tuple, trunc_normal_
@@ -186,7 +187,7 @@ def White_box_module(pretrained=False, use_stochastic=False, gcn_len=2, **kwargs
     class OptInit:
         def __init__(self, num_classes=768, drop_path_rate=0.0, drop_rate=0.0, num_knn=9, **kwargs):
             self.k = num_knn  # neighbor num (default:9)
-            self.conv = 'mr'  # graph conv layer {edge, mr}
+            self.conv = 'gat'  # graph conv layer {edge, mr}
             self.act = 'gelu'  # activation layer {relu, prelu, leakyrelu, gelu, hswish}
             self.norm = 'batch'  # batch or instance normalization {batch, instance}
             self.bias = True  # bias of conv layer True or False

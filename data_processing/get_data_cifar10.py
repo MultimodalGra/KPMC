@@ -14,11 +14,11 @@ parser.add_argument('--task', default='fs', type=str, help='fs or eth')
 args = parser.parse_args()
 
 # Load the model
-device = "cuda:2" if torch.cuda.is_available() else "cpu"
+device = "cuda:0" if torch.cuda.is_available() else "cpu"
 model, preprocess = clip.load('ViT-B/16', device)
 
 # Download the dataset
-root = os.path.expanduser("~/.cache")
+root = os.path.expanduser("~/dataset")
 train = CIFAR10(root, download=True, train=True, transform=preprocess)
 
 def get_features(dataset):

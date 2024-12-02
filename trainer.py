@@ -1,5 +1,4 @@
-import os.path
-os.environ["CUDA_VISIBLE_DEVICES"] = "2,0,3,5,1"
+
 import sys
 import logging
 import copy
@@ -17,7 +16,7 @@ def train(args):
         _train(args)
 
 def _train(args):
-    logfilename = './logs/{}_{}_{}_'.format(args['prefix'], args['model_name'], args['net_type']) + time.strftime("%Y-%m-%d-%H:%M:%S", time.localtime())
+    logfilename = './logs/{}_{}_{}_'.format(args['prefix'], args['net_type'],args['model_name']) + time.strftime("%Y-%m-%d-%H:%M:%S", time.localtime())
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s [%(filename)s] => %(message)s',
@@ -46,6 +45,7 @@ def _set_device(args):
             device = torch.device('cuda:{}'.format(device))
         gpus.append(device)
     args['device'] = gpus
+    print(gpus)
 
 def _set_random():
     torch.manual_seed(1)

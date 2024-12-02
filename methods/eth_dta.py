@@ -178,7 +178,7 @@ class eth_dta(object):
             inputs, targets = inputs.to(self._device), targets.to(self._device)
             with torch.no_grad():
                 # outputs = model(inputs, target=None, p_target=None)
-                outputs = model.module.inference(inputs, target=None, p_target=None)
+                outputs = model.inference(inputs, target=None, p_target=None)
                 logits = outputs['logits']
             preds = torch.max(logits, dim=1)[1]
             correct += preds.eq(targets.expand_as(preds)).cpu().sum()

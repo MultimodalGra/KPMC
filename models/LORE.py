@@ -62,7 +62,7 @@ class LORE(nn.Module):
             self.prompt_learner = PromptLearner_ucf(self.cfg, ucf_classnames, self.clip_model)
 
         self.tokenized_prompts = self.prompt_learner.tokenized_prompts
-        self.global_p = nn.Parameter(torch.randn(self.layer_num, self.args["prompt_length"], self.args["embd_dim"]))
+        self.global_p = nn.Parameter(torch.randn(self.layer_num, self.args["prompt_length"], self.args["embd_dim"])) # ?
         nn.init.normal_(self.global_p, std=0.02)
 
         self.classifier = nn.Linear(self.image_encoder.output_dim, self.class_num, bias=True).type(self.dtype)
@@ -76,43 +76,63 @@ class LORE(nn.Module):
 
 
     def forward(self, image, target=None, p_target=None):
+        """
+        Forward pass of the model.
+
+        Args:
+            image: Input images.
+            target: Optional target labels for contrastive learning.
+            p_target: Optional pseudo target labels for contrastive learning.
+
+        Returns:
+            A dictionary containing logits, image features, and contrastive learning related values.
+        """
         logits = []
+        # Encode the input image to obtain visual features
         class_features = self.image_encoder(image.type(self.dtype))
         class_features_ = class_features[:, 0, :]
         # class_features = class_features_
 
-        prompts = self.prompt_learner().to(self.global_p.device)
-        tokenized_prompts = self.tokenized_prompts.to(self.global_p.device)
-        text_features = self.text_encoder(prompts, tokenized_prompts)  # class_num feature
+        # Generate text prompts and encode them to obtain textual features
+        prompts = self.prompt_learner().to(self.global_p.device)  # Shape: 100 77 512
+        tokenized_prompts = self.tokenized_prompts.to(self.global_p.device)  # Shape: 100, 77
+        text_features = self.text_encoder(prompts, tokenized_prompts)  # Shape: class_num feature
         class_pool_key = text_features
         class_pool_key_norm = class_pool_key / class_pool_key.norm(dim=-1, keepdim=True)
 
+        # Project image features to a common space for comparison with text features
         image_tokens = self.linear_projection(image.type(self.dtype))
         image_tokens = image_tokens.to(dtype=torch.float32)
 
+        # Perform weighted bilinear pooling between image and text features
         hidden_token, local_aware_p, att_tokens = self.WB(image_tokens, class_pool_key_norm.to(dtype=torch.float32))
         local_aware_p = local_aware_p.reshape(-1, self.layer_num, self.args["prompt_length_c"], self.args["embd_dim"]).type(self.dtype)
         local_aware_p = local_aware_p.permute(1, 0, 2, 3)
 
+        # Encode the image again with additional local awareness prompts
         image_features = self.image_encoder(image.type(self.dtype), self.global_p, local_aware_p, self.image_encoder.class_embedding)
         image_features = image_features[:, 0, :]
         image_features = image_features / image_features.norm(dim=-1, keepdim=True)
         logit_scale = self.logit_scale.exp()
         logits.append(self.classifier(logit_scale * image_features))
 
+        # Normalize attention tokens and hidden tokens for contrastive loss calculation
         att_tokens_norm = att_tokens / att_tokens.norm(dim=-1, keepdim=True)
         hidden_token_norm = hidden_token / hidden_token.norm(dim=-1, keepdim=True)
-        n = att_tokens_norm.shape[0]  # bs
+        n = att_tokens_norm.shape[0]  # Batch size
+
+        # Calculate the increase in similarity for positive pairs
         if target is not None:
             real_key_norm = att_tokens_norm[:, target, :].squeeze()
             target_index = torch.arange(n).to(self.global_p.device)
             target_index = target_index * (n + 1)
             real_key_norm = real_key_norm.reshape(n*n, -1)[target_index]
-            s = real_key_norm * hidden_token_norm # B C
+            s = real_key_norm * hidden_token_norm  # B C
             increase_sim = torch.sum(s) / (real_key_norm.shape[0])
         else:
             increase_sim = logit_scale
 
+        # Calculate the reduction in similarity for negative pairs
         if p_target is not None:
             ind = torch.where(target != p_target)
             p_key_norm = att_tokens_norm[:, p_target, :].squeeze()
@@ -125,13 +145,13 @@ class LORE(nn.Module):
         else:
             reduce_sim = logit_scale
 
+        # Return the logits, image features, and contrastive learning related values
         return {
             'logits': torch.cat(logits, dim=1),
             'features': image_features,
             'increase_sim': increase_sim,
             'reduce_sim': reduce_sim,
         }
-
     def inference(self, image, target=None, p_target=None):
         logits = []
         image_tokens = self.linear_projection(image.type(self.dtype))

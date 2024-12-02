@@ -1,7 +1,7 @@
 # 16 shot
 python main.py --config config_vitb16/cifar_cnet_fs16.json
 
-python main.py --config v22/cifar10_cnet_fs16.json
+python main.py --config config_vitb16/cifar10_cnet_fs16.json
 
 python main.py --config config_vitb16/dog_cnet_fs16.json
 

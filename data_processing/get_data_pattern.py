@@ -40,7 +40,7 @@ def merge_images_labels(images, labels):
     return imgs
 
 # Load the model
-device = "cuda:2" if torch.cuda.is_available() else "cpu"
+device = "cuda:0" if torch.cuda.is_available() else "cpu"
 model, preprocess = clip.load('ViT-B/16', device)
 #
 train_dir = os.path.join('/home/shaokun/Downloads/patternimage', 'train')
