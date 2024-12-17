@@ -15,6 +15,48 @@ from torch.utils.data import DataLoader
 from torchvision import datasets
 import argparse
 
+import json
+import shutil
+def split_images():
+    # JSON 文件路径
+    json_file = "/home/rookie/dataset/stanford_cars/split_zhou_StanfordCars.json"
+
+    # 数据集根目录
+    dataset_root = "/home/rookie/dataset/stanford_cars"
+
+    # 输出目录
+    train_output_dir = os.path.join(dataset_root, "split_train")
+    test_output_dir = os.path.join(dataset_root, "split_test")
+
+    # 确保输出目录存在
+    os.makedirs(train_output_dir, exist_ok=True)
+    os.makedirs(test_output_dir, exist_ok=True)
+
+    # 读取 JSON 文件
+    with open(json_file, "r") as f:
+        data = json.load(f)
+
+    # 遍历训练数据
+    for item in data.get("train", []):
+        file_path, class_id, class_name = item
+        src_path = os.path.join(dataset_root, file_path)
+        dst_dir = os.path.join(train_output_dir, str(class_id))
+        os.makedirs(dst_dir, exist_ok=True)
+        shutil.copy(src_path, os.path.join(dst_dir, os.path.basename(file_path)))
+
+    # 遍历测试数据
+    for item in data.get("test", []):
+        file_path, class_id, class_name = item
+        src_path = os.path.join(dataset_root, file_path)
+        dst_dir = os.path.join(test_output_dir, str(class_id))
+        os.makedirs(dst_dir, exist_ok=True)
+        shutil.copy(src_path, os.path.join(dst_dir, os.path.basename(file_path)))
+
+    print("数据分离完成，训练数据存放在:", train_output_dir)
+    print("测试数据存放在:", test_output_dir)
+
+# split_images()
+
 parser = argparse.ArgumentParser(description='setting')
 parser.add_argument('--shot', default=16, type=int, help='sample number per class')
 parser.add_argument('--task', default='fs', type=str, help='fs or eth')
@@ -43,10 +85,10 @@ def merge_images_labels(images, labels):
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
 model, preprocess = clip.load('ViT-B/16', device)
 
-train_dir = os.path.join('/home/shaokun/Downloads/', 'car_train')
+train_dir = os.path.join('/home/rookie/dataset/stanford_cars', 'split_train')
 train = datasets.ImageFolder(train_dir, transform=preprocess)
 print(train.classes)
-test_dir = os.path.join('/home/shaokun/Downloads/', 'car_test') # anchor set
+test_dir = os.path.join('/home/rookie/dataset/stanford_cars', 'split_test') # anchor set
 test = datasets.ImageFolder(test_dir, transform=preprocess)
 
 def get_data(dataset):

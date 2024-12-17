@@ -110,7 +110,7 @@ class GATConv2d(nn.Module):
     """
     GAT Graph Convolution
     """
-    def __init__(self,in_channels,out_channels,num_heads=2,dropout=0.6):
+    def __init__(self,in_channels,out_channels,num_heads=8,dropout=0.6):
         super(GATConv2d,self).__init__()
         self.num_heads = num_heads
         self.out_channels = out_channels

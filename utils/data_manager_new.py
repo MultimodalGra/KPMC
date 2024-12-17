@@ -107,9 +107,9 @@ class DataManager(object):
             transforms.Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),
         ])
 
-        train_dir = os.path.join(self.args['data_path'], 'car_train')
+        train_dir = os.path.join(self.args['data_path'], 'split_train')
         trainset = datasets.ImageFolder(train_dir, transform=transform_train)
-        test_dir = os.path.join(self.args['data_path'], 'car_test')
+        test_dir = os.path.join(self.args['data_path'], 'split_test')
         testset = datasets.ImageFolder(test_dir, transform=transform_test)
         return trainset, testset
 
@@ -245,7 +245,7 @@ class DataManager(object):
 
     def build_dataset_imagenet(self):
         transform_train = transforms.Compose([
-            transforms.RandomSizedCrop(224, interpolation=BICUBIC),
+            transforms.RandomResizedCrop(224, interpolation=BICUBIC),
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
             transforms.Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),
@@ -284,12 +284,21 @@ class DataManager(object):
         return trainset, testset
 
     def build_dataset_ucf(self):
+
+        interpolation_mode = transforms.InterpolationMode.BICUBIC
         transform_train = transforms.Compose([
-            transforms.RandomSizedCrop(224, interpolation=BICUBIC),
+            # 将RandomSizedCrop替换为RandomResizedCrop，并指定插值模式
+            transforms.RandomResizedCrop(224, interpolation=interpolation_mode),
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
             transforms.Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),
         ])
+        # transform_train = transforms.Compose([
+        #     transforms.RandomSizedCrop(224, interpolation=BICUBIC),
+        #     transforms.RandomHorizontalFlip(),
+        #     transforms.ToTensor(),
+        #     transforms.Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),
+        # ])
         transform_test = transforms.Compose([
             transforms.Resize(224, interpolation=BICUBIC),
             transforms.CenterCrop(224),

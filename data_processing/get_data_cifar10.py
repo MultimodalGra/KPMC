@@ -21,6 +21,7 @@ model, preprocess = clip.load('ViT-B/16', device)
 root = os.path.expanduser("~/dataset")
 train = CIFAR10(root, download=True, train=True, transform=preprocess)
 
+# 在预处理阶段 就已经 对图片进行 visual
 def get_features(dataset):
     all_features = []
     all_labels = []

@@ -2,11 +2,12 @@ import os
 
 import torch
 import sys
+import numpy as np
 
 
 if __name__ == '__main__':
-    print(sys.executable)  # 打印当前 Python 环境路径
-    print(os.getenv("CUDA_VISIBLE_DEVICES"))
-    print(torch.__version__)
-    print(torch.cuda.device_count())
-    print(torch.cuda.is_available())
+    file = np.load('./fs_cifar_16.npy',allow_pickle=True)
+    print(type(file))
+    print(file.ndim)
+    print(file[0])
+    # np.savetxt('cifar_npy_show.txt',file,fmt='%s')

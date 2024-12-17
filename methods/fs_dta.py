@@ -92,7 +92,7 @@ class fs_dta(object):
 
                 outputs = self._network(inputs, target=targets, p_target=p_targets)
                 logits = outputs['logits']
-                loss = F.cross_entropy(logits, targets)
+                loss = F.cross_entropy(logits, targets) # task
                 loss2 = torch.mean(outputs['increase_sim'])
                 ##################################################################
                 loss3 = torch.mean(outputs['reduce_sim'])

@@ -94,16 +94,16 @@ class WB(torch.nn.Module):
         print('num_knn', num_knn)
         max_dilation = 196 // max(num_knn)
         gcn_p_length = opt.gcn_len
-        if opt.use_dilation:
-            self.LIN = Seq(*[Seq(Grapher(channels, num_knn[i], min(i // 4 + 1, max_dilation), conv, act, norm,
-                                              bias, stochastic, epsilon, 1, drop_path=dpr[i]),
-                                      FFN(channels, channels * 4, act=act, drop_path=dpr[i])
-                                      ) for i in range(self.n_blocks)])
-        else:
-            self.LIN = Seq(*[Seq(Grapher(channels, num_knn[i], 1, conv, act, norm,
-                                              bias, stochastic, epsilon, 1, drop_path=dpr[i]),
-                                      FFN(channels, channels * 4, act=act, drop_path=dpr[i])
-                                      ) for i in range(self.n_blocks)])
+        # if opt.use_dilation:
+        #     self.LIN = Seq(*[Seq(Grapher(channels, num_knn[i], min(i // 4 + 1, max_dilation), conv, act, norm,
+        #                                       bias, stochastic, epsilon, 1, drop_path=dpr[i]),
+        #                               FFN(channels, channels * 4, act=act, drop_path=dpr[i])
+        #                               ) for i in range(self.n_blocks)])
+        # else:
+        #     self.LIN = Seq(*[Seq(Grapher(channels, num_knn[i], 1, conv, act, norm,
+        #                                       bias, stochastic, epsilon, 1, drop_path=dpr[i]),
+        #                               FFN(channels, channels * 4, act=act, drop_path=dpr[i])
+        #                               ) for i in range(self.n_blocks)])
         # 32
         self.PG_1 = Seq(nn.Conv2d(channels, 32, 1, bias=True),  # 1024
                              nn.BatchNorm2d(32),
@@ -118,7 +118,8 @@ class WB(torch.nn.Module):
                              act_layer(act),
                              nn.Conv2d(32, 768, 1, bias=True)
                              )
-        self.KLA = KLA(dim=768, qkv_bias=False, attn_drop=0., proj_drop=0.)
+        self.KLA = KLA(dim=768, qkv_bias=False, attn_drop=0.1, proj_drop=0.)
+
         self.model_init()
 
     def model_init(self):
@@ -131,9 +132,9 @@ class WB(torch.nn.Module):
                     m.bias.requires_grad = True
 
     def forward(self, inputs, q):
-        x = inputs
-        for i in range(self.n_blocks):
-            x = self.LIN[i](x)  # b 768 14 14
+        x = inputs  # E0
+        # for i in range(self.n_blocks):
+        #     x = self.LIN[i](x)  # b 768 14 14
 
         x_pooling = F.adaptive_avg_pool2d(x, 1)  # b 768 1 1
         B, C, p1, p2 = x.shape  # B 768 14 14
@@ -141,17 +142,18 @@ class WB(torch.nn.Module):
         x = x.permute(0, 2, 1)  # B 196 768
 
         x_att = self.KLA(x, q)  # B, class_num, 768
-
+        # x_att = self.CMF(x,q)
         x1 = self.PG_2(x_pooling)  # b 768 1 1
         x2 = self.PG_1(x1)  # b 768*12*2 1 1
         x2 = x2.squeeze(-1).squeeze(-1)
-        return x1.squeeze(-1).squeeze(-1), x2, x_att
+        return x1.squeeze(-1).squeeze(-1), x2, x_att  # hidden_token, local_aware_p, att_tokens
 
     def inference(self, inputs):
 
         x = inputs
-        for i in range(self.n_blocks):
-            x = self.LIN[i](x)  # b 768 14 14
+        # for i in range(self.n_blocks):
+        #     x = self.LIN[i](x)  # b 768 14 14
+
         # print('x:', x.shape)
         x_pooling = F.adaptive_avg_pool2d(x, 1)  # b 768 1 1
         ######################
@@ -187,8 +189,8 @@ def White_box_module(pretrained=False, use_stochastic=False, gcn_len=2, **kwargs
     class OptInit:
         def __init__(self, num_classes=768, drop_path_rate=0.0, drop_rate=0.0, num_knn=9, **kwargs):
             self.k = num_knn  # neighbor num (default:9)
-            self.conv = 'gat'  # graph conv layer {edge, mr}
-            self.act = 'gelu'  # activation layer {relu, prelu, leakyrelu, gelu, hswish}
+            self.conv = 'mr'  # graph conv layer {edge, mr}
+            self.act = 'relu'  # activation layer {relu, prelu, leakyrelu, gelu, hswish}
             self.norm = 'batch'  # batch or instance normalization {batch, instance}
             self.bias = True  # bias of conv layer True or False
             self.n_blocks = 1  # number of basic blocks in the backbone
@@ -200,6 +202,7 @@ def White_box_module(pretrained=False, use_stochastic=False, gcn_len=2, **kwargs
             self.use_stochastic = use_stochastic # stochastic for gcn, True or False
             self.drop_path = drop_path_rate
             self.gcn_len = gcn_len
+            self.class_num = kwargs.get('class_num')
 
     opt = OptInit(**kwargs)
     model = WB(opt)

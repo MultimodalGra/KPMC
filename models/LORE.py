@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from models.clip.prompt_learner import cfgc, cfgc_vitb32, load_clip_to_cpu, TextEncoder, PromptLearner_v2, PromptLearner_v4, PromptLearner_v3, PromptLearner_flower,  PromptLearner_nwpu,  PromptLearner_dog, PromptLearner_ucf
+from models.clip.prompt_learner import cfgc, cfgc_vitb32, load_clip_to_cpu, TextEncoder, PromptLearner_v2, PromptLearner_v4, PromptLearner_v3, PromptLearner_flower,  PromptLearner_nwpu,  PromptLearner_dog, PromptLearner_ucf, PromptLearner_ucfwithCoop, PromptLearner_v2withCoop
 from utils.class_names import cifar10_classnames, cifar100_classnames, stanfordcars_classnames,  dtd_classnames, SAT_classnames, Aircraft_classnames, flower_classnames, nwpu_classnames, pattern_classnames,  imagenet_classnames, dog_classnames, ucf_classnames
 from models.WB_module import White_box_module
 import copy
@@ -26,16 +26,16 @@ class LORE(nn.Module):
 
         if args['dataset'] == 'cifar':
             self.class_num = 100
-            self.prompt_learner = PromptLearner_v2(self.cfg, cifar100_classnames, self.clip_model)
+            self.prompt_learner = PromptLearner_v2withCoop(self.cfg, cifar100_classnames, self.clip_model)
         if args['dataset'] == 'cifar10':
             self.class_num = 10
-            self.prompt_learner = PromptLearner_v2(self.cfg, cifar10_classnames, self.clip_model)
+            self.prompt_learner = PromptLearner_v2withCoop(self.cfg, cifar10_classnames, self.clip_model)
         if args['dataset'] == 'cars':
             self.class_num = len(stanfordcars_classnames)
-            self.prompt_learner = PromptLearner_v2(self.cfg, stanfordcars_classnames, self.clip_model)
+            self.prompt_learner = PromptLearner_v2withCoop(self.cfg, stanfordcars_classnames, self.clip_model)
         if args['dataset'] == 'dtd':
             self.class_num = len(dtd_classnames)
-            self.prompt_learner = PromptLearner_v2(self.cfg, dtd_classnames, self.clip_model)
+            self.prompt_learner = PromptLearner_v2withCoop(self.cfg, dtd_classnames, self.clip_model)
         if args['dataset'] == 'sat':
             self.class_num = len(SAT_classnames)
             self.prompt_learner = PromptLearner_v3(self.cfg, SAT_classnames, self.clip_model)
@@ -59,7 +59,7 @@ class LORE(nn.Module):
             self.prompt_learner = PromptLearner_dog(self.cfg, dog_classnames, self.clip_model)
         if args['dataset'] == 'ucf':
             self.class_num = len(ucf_classnames)
-            self.prompt_learner = PromptLearner_ucf(self.cfg, ucf_classnames, self.clip_model)
+            self.prompt_learner = PromptLearner_ucfwithCoop(self.cfg, ucf_classnames, self.clip_model)
 
         self.tokenized_prompts = self.prompt_learner.tokenized_prompts
         self.global_p = nn.Parameter(torch.randn(self.layer_num, self.args["prompt_length"], self.args["embd_dim"])) # ?
@@ -72,7 +72,7 @@ class LORE(nn.Module):
         self.bn1_ = nn.BatchNorm1d(self.text_encoder.text_projection.shape[1])
         self.bn2_ = nn.BatchNorm1d(self.text_encoder.text_projection.shape[1])
         self.linear_projection = copy.deepcopy(self.image_encoder.conv1)
-        self.WB = White_box_module(use_stochastic=False, gcn_len=self.args["prompt_length_c"])
+        self.WB = White_box_module(use_stochastic=False, gcn_len=self.args["prompt_length_c"],class_num=self.class_num)
 
 
     def forward(self, image, target=None, p_target=None):

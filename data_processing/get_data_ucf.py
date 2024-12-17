@@ -14,6 +14,45 @@ import numpy as np
 from torch.utils.data import DataLoader
 from torchvision import datasets
 import argparse
+import json
+import shutil
+def split_images():
+    # 路径配置
+    dataset_path = "/home/rookie/dataset/ucf101"
+    image_dir = os.path.join(dataset_path, "UCF-101-midframes")
+    output_dir = os.path.join(dataset_path, "split")
+    json_file = os.path.join(dataset_path, "split_zhou_UCF101.json")
+
+    # 创建目标文件夹
+    for split in ['train', 'test', 'validation']:
+        split_dir = os.path.join(output_dir, split)
+        os.makedirs(split_dir, exist_ok=True)
+
+    # 读取 JSON 文件
+    with open(json_file, 'r') as f:
+        split_data = json.load(f)
+
+    # 解析 JSON 中的划分信息
+    for split, files in split_data.items():
+        split_folder = os.path.join(output_dir, split)
+
+        for file_info in files:
+            image_path = file_info[0]  # 图片路径
+            # 获取图片的源路径
+            src_image = os.path.join(image_dir, image_path)
+
+            # 获取目标路径
+            dst_image = os.path.join(split_folder, image_path)
+
+            # 确保目标文件夹存在
+            dst_folder = os.path.dirname(dst_image)
+            os.makedirs(dst_folder, exist_ok=True)
+
+            # 移动文件
+            shutil.move(src_image, dst_image)
+            print(f"Moved {image_path} to {split_folder}")
+
+# split_images()
 
 parser = argparse.ArgumentParser(description='setting')
 parser.add_argument('--shot', default=16, type=int, help='sample number per class')
@@ -43,10 +82,10 @@ def merge_images_labels(images, labels):
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
 model, preprocess = clip.load('ViT-B/16', device)
 #
-train_dir = os.path.join('/home/shaokun/Downloads/ucfimage', 'train')
+train_dir = os.path.join('/home/rookie/dataset/ucf101/split', 'train')
 train = datasets.ImageFolder(train_dir, transform=preprocess)
 print(train.classes)
-test_dir = os.path.join('/home/shaokun/Downloads/ucfimage', 'test') # anchor set
+test_dir = os.path.join('/home/rookie/dataset/ucf101/split', 'test') # anchor set
 test = datasets.ImageFolder(test_dir, transform=preprocess)
 
 def get_data(dataset):
