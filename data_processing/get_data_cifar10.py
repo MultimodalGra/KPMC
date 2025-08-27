@@ -1,4 +1,6 @@
 import os
+from ast import iter_child_nodes
+
 import clip
 import torch
 from torchvision.datasets import CIFAR100, CIFAR10
@@ -18,10 +20,9 @@ device = "cuda:0" if torch.cuda.is_available() else "cpu"
 model, preprocess = clip.load('ViT-B/16', device)
 
 # Download the dataset
-root = os.path.expanduser("~/dataset")
+root = os.path.expanduser("/data2/hh/dataset")
 train = CIFAR10(root, download=True, train=True, transform=preprocess)
 
-# 在预处理阶段 就已经 对图片进行 visual
 def get_features(dataset):
     all_features = []
     all_labels = []
@@ -70,6 +71,7 @@ for iter_dico in range(10):
             alpha_dr_herding[iter_dico, ind_max] = 1 + iter_herding
             iter_herding += 1
         w_t = w_t + mu - D[:, ind_max]
+
 
     alph = alpha_dr_herding[iter_dico, :]
     alph = (alph > 0) * (alph < nb_protos_cl * 1 + 1 + 0) * ((alph % 1) == 0) * 1.

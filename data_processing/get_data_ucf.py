@@ -1,5 +1,6 @@
 import os
 import random
+
 import clip
 import torch
 from PIL import Image
@@ -82,10 +83,10 @@ def merge_images_labels(images, labels):
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
 model, preprocess = clip.load('ViT-B/16', device)
 #
-train_dir = os.path.join('/home/rookie/dataset/ucf101/split', 'train')
+train_dir = os.path.join('/data2/hh/dataset/ucf101/split', 'train')
 train = datasets.ImageFolder(train_dir, transform=preprocess)
 print(train.classes)
-test_dir = os.path.join('/home/rookie/dataset/ucf101/split', 'test') # anchor set
+test_dir = os.path.join('/data2/hh/dataset/ucf101/split', 'test') # anchor set
 test = datasets.ImageFolder(test_dir, transform=preprocess)
 
 def get_data(dataset):

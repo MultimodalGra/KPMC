@@ -43,11 +43,14 @@ def merge_images_labels(images, labels):
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
 model, preprocess = clip.load('ViT-B/16', device)
 #
-train_dir = os.path.join('/home/shaokun/Downloads/nwpuimage/', 'train')
+train_dir = '/data2/hh/dataset/resisc45/train'
+test_dir = '/data2/hh/dataset/resisc45/test'
+print(os.listdir('/data2/hh/dataset/resisc45/train'))
 train = datasets.ImageFolder(train_dir, transform=preprocess)
 print(train.classes)
-test_dir = os.path.join('/home/shaokun/Downloads/nwpuimage/', 'test') # anchor set
 test = datasets.ImageFolder(test_dir, transform=preprocess)
+
+
 
 def get_data(dataset):
     all_images = []

@@ -1,14 +1,13 @@
-import torch.nn as nn
+
 from torch import optim
-from torch.nn import functional as F
 import logging
 from tqdm import tqdm
+from wandb.wandb_torch import torch
 from utils.data_manager_new import DataManager
-from utils.My_dataset import MyDataSet
-from utils.toolkit import tensor2numpy
+from utils.distance import distance
+from utils.toolkit import cls_acc
 from models.LORE import LORE
 from utils.get_hard_samples import *
-
 class fs_dta(object):
 
     def __init__(self, args):
@@ -33,25 +32,17 @@ class fs_dta(object):
         self.shot = args['shot']
         self.ds = args['dataset']
 
-    def train_phase(self):
+    def train_phase(self,train_dataset, clip_weights,cache_keys,cache_values):
         data_manager = DataManager(self.args)
         train_dataset_all, test_dataset = data_manager.get_dataset()
         train_dataset_all_, _ = data_manager.get_dataset()
-        self.select_data = np.load(self.new_dir, allow_pickle=True).item()
-        train_dataset = MyDataSet(self.select_data)
         self.train_loader_all = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=self.num_workers)
         self.train_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=self.num_workers)
         self.test_loader = DataLoader(test_dataset, batch_size=100, shuffle=False, num_workers=self.num_workers)
+        self._train(self.train_loader, self.test_loader,clip_weights,cache_values)
 
-        # if len(self._multiple_gpus) > 1:
-        #     print(self._multiple_gpus)
-        #     self._network = nn.DataParallel(self._network, self._multiple_gpus)
-        self._train(self.train_loader, self.test_loader, self.train_loader_all, train_dataset_all, train_dataset_all_)
 
-        # if len(self._multiple_gpus) > 1:
-        #     self._network = self._network.module
-
-    def _train(self, train_loader, test_loader, train_loader_all, train_dataset_all, train_dataset_all_):
+    def _train(self, train_loader, test_loader,clip_weights,cache_values):
 
         self._network.to(self._device)
 
@@ -66,72 +57,118 @@ class fs_dta(object):
                 param.requires_grad_(True)
             if "WB" in name:
                 param.requires_grad_(True)
-        # Double check
+            if "cross_attn" in name:
+                param.requires_grad_(True)
+            if "image_adapter" in name:
+                param.requires_grad_(True)
+            if "text_adapter" in name:
+                param.requires_grad_(True)
+            if "prompt" in name:
+                param.requires_grad_(True)
         enabled = set()
         for name, param in self._network.named_parameters():
             if param.requires_grad:
                 enabled.add(name)
+
         print(f"Parameters to be updated: {enabled}")
-        optimizer = optim.SGD(self._network.parameters(), momentum=0.9, lr=self.init_lr, weight_decay=self.init_weight_decay)
-        scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer=optimizer, T_max=self.init_epoch, eta_min=self.args['lr_min'])
+        all_params = list(self._network.parameters())
         self.run_epoch = self.init_epoch
-        self.train_function(train_loader, test_loader, optimizer, scheduler, train_loader_all, train_dataset_all, train_dataset_all_)
+        optimizer = optim.SGD(all_params, momentum=0.9 ,lr=self.init_lr, weight_decay=self.init_weight_decay)
+        scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer=optimizer, T_max=self.init_epoch,
+                                                         eta_min=self.args['lr_min'])
+
+        self.train_function(train_loader, test_loader, optimizer, scheduler,clip_weights,cache_values)
 
 
-    def train_function(self, train_loader, test_loader, optimizer, scheduler,train_loader_all, train_dataset_all, train_dataset_all_):
+    def train_function(self, train_loader, test_loader, optimizer, scheduler,clip_weights,cache_values):
 
+        beta, alpha = self.args['init_beta'], self.args['init_alpha']
+        best_acc = 0
+        logfilename = '/data2/hh/output/KGPT/logs/{}_best'.format(self.args['prefix'])
+        ckp_name = logfilename + '.pkl'
         prog_bar = tqdm(range(self.run_epoch))
         for _, epoch in enumerate(prog_bar):
             losses = 0.
-            correct, total, k_score_train = 0, 0, 0
-            losses2, losses3 = 0, 0
+            losses1,losses2, losses3 = 0, 0, 0
+            correct_samples, all_samples = 0, 0
             for i, (inputs, targets, p_targets) in enumerate(train_loader):
                 inputs = inputs.to(self._device)
                 targets = targets.to(self._device)
                 p_targets = p_targets.to(self._device)
+                self._network.image_adapter.train()
+                self._network.text_adapter.train()
+                outputs = self._network(inputs,
+                                        target=targets,
+                                        p_target=p_targets,
+                                        )
 
-                outputs = self._network(inputs, target=targets, p_target=p_targets)
-                logits = outputs['logits']
-                loss = F.cross_entropy(logits, targets) # task
+                loss = outputs['loss']
+                cluster_logits = outputs['cluster_logits']
                 loss2 = torch.mean(outputs['increase_sim'])
-                ##################################################################
                 loss3 = torch.mean(outputs['reduce_sim'])
-                ##################################################################
-                loss = loss - self.pull_constraint * loss2 + self.pull_constraint_2 * loss3
+                losses1 += loss.item()
+                loss =  loss - self.pull_constraint * loss2 + self.pull_constraint_2 * loss3
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
                 losses += loss.item()
                 losses2 += self.pull_constraint * loss2.item()
                 losses3 += self.pull_constraint_2 * loss3.item()
-                _, preds = torch.max(logits, dim=1)
-                correct += preds.eq(targets.expand_as(preds)).cpu().sum()
-                total += len(targets)
+                acc = cls_acc(cluster_logits, targets)
+                correct_samples += acc / 100 * len(cluster_logits)
+                all_samples += len(cluster_logits)
 
             scheduler.step()
-            print('lr', scheduler.get_lr())
-            train_acc = np.around(tensor2numpy(correct) * 100 / total, decimals=2)
-            test_acc = self._compute_accuracy(self._network, test_loader)
-            info = 'Epoch {}/{} => Loss {:.3f}, Loss2 {:.3f}, Loss3 {:.3f}, Train_accy {:.2f}, Test_accy {:.2f}'.format(
-                 epoch + 1, self.run_epoch, losses / len(train_loader), losses2 / len(train_loader), losses3 / len(train_loader),train_acc, test_acc)
+
+            train_acc = correct_samples / all_samples
+
+            test_acc = self._compute_accuracy(self._network, test_loader,cache_values,clip_weights,beta,alpha,self.args['alpha2'])
+            if test_acc > best_acc:
+                best_acc = test_acc
+                torch.save(self,ckp_name)
+            info = 'Epoch {}/{} => Loss {:.3f}, Loss1 {:.3f}, Loss2 {:.3f}, Loss3 {:.3f}, Train_accy {:.4f}, Test_accy {:.4f}'.format(
+                 epoch + 1, self.run_epoch, losses / len(train_loader),  losses1 / len(train_loader) , losses2 / len(train_loader), losses3 / len(train_loader),train_acc * 100, test_acc)
             prog_bar.set_description(info)
             logging.info(info)
 
+        final_info = 'The best accuracy is {:.3f}'.format(best_acc)
+        logging.info(final_info)
 
-    def _compute_accuracy(self, model, loader):
+
+
+    def _compute_accuracy(self, model, loader,cache_values,clip_weights,beta,alpha1,alpha2):
         model.eval()
-        correct, total, key_score = 0, 0, 0
+        model.image_adapter.eval()
+        model.text_adapter.eval()
 
-        for i, (inputs, targets) in enumerate(loader):
-            inputs, targets = inputs.to(self._device), targets.to(self._device)
+        targets,features,logitses,clip_features = [],[],[],[]
+
+        for i, (inputs, target) in enumerate(loader):
+            inputs, target = inputs.to(self._device), target.to(self._device)
+
             with torch.no_grad():
-                #outputs = model(inputs, target=None, p_target=None)
                 outputs = model.inference(inputs, target=None, p_target=None)
-                logits = outputs['logits']
-            preds = torch.max(logits, dim=1)[1]
-            correct += preds.eq(targets.expand_as(preds)).cpu().sum()
-            total += len(targets)
+                test_features = outputs['features']
+                targets.append(target)
+                features.append(test_features)
 
-        return np.around(tensor2numpy(correct) * 100 / total, decimals=2)
+                logitses.append(outputs['logits'])
 
+        targets = torch.cat(targets)
+        features = torch.cat(features)
+        logitses = torch.cat(logitses)
+        cache_logits,_,_ = model.image_adapter(features,
+                                     beta=beta,
+                                     cache_values=cache_values,
+                                     pow_weight=self.args['iw'])
+        features = features.to(torch.float32)
+        clip_logits = 100. * distance(features.float(),model.text_adapter(clip_weights),self.args['distance'])
+
+        sum_logits = clip_logits * alpha2 + cache_logits  * alpha1
+        sum_logits = sum_logits.half()
+        cluster_logits = sum_logits + logitses
+
+        acc = cls_acc(cluster_logits,targets)
+
+        return acc
 

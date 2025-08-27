@@ -1,11 +1,18 @@
-
+import os
 import sys
 import logging
 import copy
 import time
+
+import numpy as np
 import torch
 from utils import factory
+from utils.My_dataset import MyDataSet
 from utils.toolkit import count_parameters
+from utils.clip_classifier import clip_classifier,build_cache_model
+from utils.class_names import datasets_info
+from torch.utils.data import DataLoader
+from models.clip.prompt_learner import load_clip_to_cpu, cfgc, cfgc_vitb32
 
 def train(args):
     seed_list = copy.deepcopy(args['seed'])
@@ -28,12 +35,48 @@ def _train(args):
     _set_random()
     _set_device(args)
     print_args(args)
+
+
+    # load clip model
+    if args["backbone"] == "vitb16":
+        cfg = cfgc()
+    elif args["backbone"] == "vitb32":
+        cfg = cfgc_vitb32()
+    clip_model = load_clip_to_cpu(cfg)
+    args["clip_model"] = clip_model.to(args['device'][0])
+    print("\nGetting textual features as CLIP's classifier.")
+
+    current_dataset = datasets_info[args['dataset']]
+    clip_weights = clip_classifier(current_dataset['classnames'], current_dataset['template'], clip_model,
+                                   args['dataset'])
+    clip_weights = clip_weights.float()
+    args["clip_weights"] = clip_weights
+
+    cache_dir = os.path.join('./caches', args['dataset'])
+    os.makedirs(cache_dir, exist_ok=True)
+    args["cache_dir"] = cache_dir
+
+    # Construct the cache model by few-shot training set
+    select_data = np.load(args['new_dir'], allow_pickle=True).item()
+    train_dataset = MyDataSet(select_data)
+
+    cache_loader = DataLoader(train_dataset, batch_size=args["batch_size"], shuffle=False,
+                                   num_workers=args["num_workers"])
+
+    print("\nConstructing cache model by few-shot test features and labels.")
+    cache_keys, cache_values = build_cache_model(args, clip_model,cache_loader)
+    cache_keys = cache_keys.float()
+    args["cache_keys"] = cache_keys
+    cache_values = cache_values.float()
+    args["cache_values"] = cache_values
+
+
     model = factory.get_model(args['model_name'], args)
-    model.train_phase()
+    model.train_phase(train_dataset,clip_weights,cache_keys,cache_values)
     logging.info('All params: {}'.format(count_parameters(model._network)))
     logging.info('Trainable params: {}'.format(count_parameters(model._network, True)))
     ckp_name = logfilename + '.pkl'
-    torch.save(model, ckp_name)
+    # torch.save(model, ckp_name)
 
 def _set_device(args):
     device_type = args['device']

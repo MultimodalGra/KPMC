@@ -27,10 +27,12 @@ def split_images():
     # 输出目录
     train_output_dir = os.path.join(dataset_root, "split_train")
     test_output_dir = os.path.join(dataset_root, "split_test")
+    val_output_dir = os.path.join(dataset_root, "split_val")
 
     # 确保输出目录存在
     os.makedirs(train_output_dir, exist_ok=True)
     os.makedirs(test_output_dir, exist_ok=True)
+    os.makedirs(val_output_dir, exist_ok=True)
 
     # 读取 JSON 文件
     with open(json_file, "r") as f:
@@ -41,6 +43,14 @@ def split_images():
         file_path, class_id, class_name = item
         src_path = os.path.join(dataset_root, file_path)
         dst_dir = os.path.join(train_output_dir, str(class_id))
+        os.makedirs(dst_dir, exist_ok=True)
+        shutil.copy(src_path, os.path.join(dst_dir, os.path.basename(file_path)))
+
+    # 遍历验证数据
+    for item in data.get("val", []):
+        file_path, class_id, class_name = item
+        src_path = os.path.join(dataset_root, file_path)
+        dst_dir = os.path.join(test_output_dir, str(class_id))
         os.makedirs(dst_dir, exist_ok=True)
         shutil.copy(src_path, os.path.join(dst_dir, os.path.basename(file_path)))
 
@@ -85,10 +95,10 @@ def merge_images_labels(images, labels):
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
 model, preprocess = clip.load('ViT-B/16', device)
 
-train_dir = os.path.join('/home/rookie/dataset/stanford_cars', 'split_train')
+train_dir = os.path.join('/data2/hh/dataset/stanford_cars', 'split_train')
 train = datasets.ImageFolder(train_dir, transform=preprocess)
 print(train.classes)
-test_dir = os.path.join('/home/rookie/dataset/stanford_cars', 'split_test') # anchor set
+test_dir = os.path.join('/data2/hh/dataset/stanford_cars', 'split_test') # anchor set
 test = datasets.ImageFolder(test_dir, transform=preprocess)
 
 def get_data(dataset):
@@ -147,10 +157,22 @@ for iter_dico in range(len(train.classes)):
     alph = (alph > 0) * (alph < nb_protos_cl * 1 + 1 + 0) * ((alph % 1) == 0) * 1.
     #print(alph)
 
+    # if args.task == "fs":
+    #     '''random'''
+    #     # random.seed(1993)
+    #     random_list = random.sample(range(0,num_samples),nb_protos_cl)
+    #     random_list = np.array(random_list)
+    #     x_herd.append(prototypes[iter_dico][random_list])
+    # elif args.task == "eth":
+    #     x_herd.append(prototypes[iter_dico][np.where(alph == 1)[0]])
     if args.task == "fs":
         '''random'''
         # random.seed(1993)
-        random_list = random.sample(range(0,num_samples),nb_protos_cl)
+        if num_samples < nb_protos_cl:
+            print(f"⚠️ Warning: Class {iter_dico} has only {num_samples} samples, using all available.")
+            random_list = list(range(num_samples))
+        else:
+            random_list = random.sample(range(0, num_samples), nb_protos_cl)
         random_list = np.array(random_list)
         x_herd.append(prototypes[iter_dico][random_list])
     elif args.task == "eth":

@@ -22,7 +22,7 @@ class DataManager(object):
             trainset, testset = self.build_dataset_cifar10()
             return trainset, testset
         elif self.dataset_name == 'cars':
-            trainset, testset = self.build_dataset_cars()
+            trainset, testset,valset = self.build_dataset_cars()
             return trainset, testset
         elif self.dataset_name == 'dtd':
             trainset, testset = self.build_dataset_dtd()
@@ -51,7 +51,12 @@ class DataManager(object):
         elif self.dataset_name == 'ucf':
             trainset, testset = self.build_dataset_ucf()
             return trainset, testset
-
+        elif self.dataset_name == 'caltech101':
+            trainset, testset = self.build_dataset_caltech101()
+            return trainset, testset
+        elif self.dataset_name == 'imagenetv2':
+            testset = self.build_dataset_imagenetv2()
+            return testset
 
     def build_dataset_cifar(self):
         transform_train = transforms.Compose([
@@ -107,11 +112,21 @@ class DataManager(object):
             transforms.Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),
         ])
 
+        transform_val = transforms.Compose([
+            transforms.Resize(224, interpolation=BICUBIC),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+            transforms.Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),
+        ])
+
         train_dir = os.path.join(self.args['data_path'], 'split_train')
         trainset = datasets.ImageFolder(train_dir, transform=transform_train)
         test_dir = os.path.join(self.args['data_path'], 'split_test')
         testset = datasets.ImageFolder(test_dir, transform=transform_test)
-        return trainset, testset
+        val_dir = os.path.join(self.args['data_path'], 'split_val')
+        valset = datasets.ImageFolder(val_dir, transform=transform_val)
+
+        return trainset, testset,valset
 
     def build_dataset_dtd(self):
         transform_train = transforms.Compose([
@@ -265,7 +280,7 @@ class DataManager(object):
 
     def build_dataset_dog(self):
         transform_train = transforms.Compose([
-            transforms.RandomSizedCrop(224, interpolation=BICUBIC),
+            transforms.RandomResizedCrop(224, interpolation=BICUBIC),
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
             transforms.Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),
@@ -312,3 +327,47 @@ class DataManager(object):
         testset = datasets.ImageFolder(test_dir, transform=transform_test)
         return trainset, testset
 
+    def build_dataset_caltech101(self):
+        interpolation_mode = transforms.InterpolationMode.BICUBIC
+
+        # 定义训练集的转换操作
+        transform_train = transforms.Compose([
+            transforms.RandomResizedCrop(224, interpolation=interpolation_mode),  # 随机裁剪并调整大小
+            transforms.RandomHorizontalFlip(),  # 随机水平翻转
+            transforms.ToTensor(),
+            transforms.Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),  # 标准化
+        ])
+
+        # 定义测试集的转换操作
+        transform_test = transforms.Compose([
+            transforms.Resize(224, interpolation=interpolation_mode),  # 调整大小
+            transforms.CenterCrop(224),  # 中心裁剪
+            transforms.ToTensor(),
+            transforms.Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),  # 标准化
+        ])
+
+        # 设置数据路径
+        train_dir = os.path.join(self.args['data_path'], 'train')
+        test_dir = os.path.join(self.args['data_path'], 'test')
+
+        # 加载训练集和测试集
+        trainset = datasets.ImageFolder(train_dir, transform=transform_train)
+        testset = datasets.ImageFolder(test_dir, transform=transform_test)
+
+        return trainset, testset
+
+    def build_dataset_imagenetv2(self):
+        transform = transforms.Compose([
+            transforms.Resize(256),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                 std=[0.229, 0.224, 0.225])
+        ])
+
+        # test_dir = os.path.join(self.args['data_path'], 'imagenetv2-matched-frequency-format-val')
+        test_dir = os.path.join(self.args['data_path'], 'imagenet-a')
+        # test_dir = os.path.join(self.args['data_path'], 'images')
+        testset = datasets.ImageFolder(test_dir, transform=transform)
+
+        return  testset

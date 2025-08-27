@@ -1,7 +1,10 @@
 import os
 import numpy as np
 import torch
-
+from torch.utils.data import Dataset as TorchDataset
+import torchvision.transforms as T
+import os.path as osp
+from PIL import Image
 
 def count_parameters(model, trainable=False):
     if trainable:
@@ -13,96 +16,104 @@ def tensor2numpy(x):
     return x.cpu().data.numpy() if x.is_cuda else x.data.numpy()
 
 
-def target2onehot(targets, n_classes):
-    onehot = torch.zeros(targets.shape[0], n_classes).to(targets.device)
-    onehot.scatter_(dim=1, index=targets.long().view(-1, 1), value=1.)
-    return onehot
+class DatasetWrapper(TorchDataset):
+
+    def __init__(self,
+                 data_source,
+                 input_size,
+                 transform=None,
+                 is_train=False,
+                 return_img0=False,
+                 k_tfm=1):
+        self.data_source = data_source
+        self.transform = transform  # accept list (tuple) as input
+        self.is_train = is_train
+        # Augmenting an image K>1 times is only allowed during training
+        self.k_tfm = k_tfm if is_train else 1
+        self.return_img0 = return_img0
+
+        if self.k_tfm > 1 and transform is None:
+            raise ValueError('Cannot augment the image {} times '
+                             'because transform is None'.format(self.k_tfm))
+
+        # Build transform that doesn't apply any data augmentation
+        interp_mode = T.InterpolationMode.BICUBIC
+        to_tensor = []
+        to_tensor += [T.Resize(input_size, interpolation=interp_mode)]
+        to_tensor += [T.ToTensor()]
+        normalize = T.Normalize(mean=(0.48145466, 0.4578275, 0.40821073),
+                                std=(0.26862954, 0.26130258, 0.27577711))
+        to_tensor += [normalize]
+        self.to_tensor = T.Compose(to_tensor)
+
+    def __len__(self):
+        return len(self.data_source)
+
+    def __getitem__(self, idx):
+        item = self.data_source[idx]
+
+        output = {
+            'label': item.label,
+            'domain': item.domain,
+            'impath': item.impath
+        }
+
+        img0 = read_image(item.impath)
+
+        if self.transform is not None:
+            if isinstance(self.transform, (list, tuple)):
+                for i, tfm in enumerate(self.transform):
+                    img = self._transform_image(tfm, img0)
+                    keyname = 'img'
+                    if (i + 1) > 1:
+                        keyname += str(i + 1)
+                    output[keyname] = img
+            else:
+                img = self._transform_image(self.transform, img0)
+                output['img'] = img
+
+        if self.return_img0:
+            output['img0'] = self.to_tensor(img0)
+
+        return output['img'], output['label']
+
+    def _transform_image(self, tfm, img0):
+        img_list = []
+
+        for k in range(self.k_tfm):
+            img_list.append(tfm(img0))
+
+        img = img_list
+        if len(img) == 1:
+            img = img[0]
+
+        return img
+
+def read_image(path):
+    """Read image from path using ``PIL.Image``.
+
+    Args:
+        path (str): path to an image.
+
+    Returns:
+        PIL image
+    """
+    if not osp.exists(path):
+        raise IOError('No file exists at {}'.format(path))
+
+    while True:
+        try:
+            img = Image.open(path).convert('RGB')
+            return img
+        except IOError:
+            print('Cannot read image from {}, '
+                  'probably due to heavy IO. Will re-try'.format(path))
 
 
-def makedirs(path):
-    if not os.path.exists(path):
-        os.makedirs(path)
-
-
-def accuracy(y_pred, y_true, nb_old, increment=10):
-    assert len(y_pred) == len(y_true), 'Data length error.'
-    all_acc = {}
-    all_acc['total'] = np.around((y_pred == y_true).sum()*100 / len(y_true), decimals=2)
-
-    # Grouped accuracy
-    for class_id in range(0, np.max(y_true), increment):
-        idxes = np.where(np.logical_and(y_true >= class_id, y_true < class_id + increment))[0]
-        label = '{}-{}'.format(str(class_id).rjust(2, '0'), str(class_id+increment-1).rjust(2, '0'))
-        all_acc[label] = np.around((y_pred[idxes] == y_true[idxes]).sum()*100 / len(idxes), decimals=2)
-
-    # Old accuracy
-    idxes = np.where(y_true < nb_old)[0]
-    all_acc['old'] = 0 if len(idxes) == 0 else np.around((y_pred[idxes] == y_true[idxes]).sum()*100 / len(idxes),
-                                                         decimals=2)
-
-    # New accuracy
-    idxes = np.where(y_true >= nb_old)[0]
-    all_acc['new'] = np.around((y_pred[idxes] == y_true[idxes]).sum()*100 / len(idxes), decimals=2)
-
-    return all_acc
-
-
-def split_images_labels(imgs):
-    # split trainset.imgs in ImageFolder
-    images = []
-    labels = []
-    for item in imgs:
-        images.append(item[0])
-        labels.append(item[1])
-
-    return np.array(images), np.array(labels)
-
-
-
-
-def accuracy_domain(y_pred, y_true, nb_old, increment=2, class_num=1):
-    assert len(y_pred) == len(y_true), 'Data length error.'
-    all_acc = {}
-    all_acc['total'] = np.around((y_pred%class_num == y_true%class_num).sum()*100 / len(y_true), decimals=2)
-
-    # Grouped accuracy
-    for class_id in range(0, np.max(y_true), increment):
-        idxes = np.where(np.logical_and(y_true >= class_id, y_true < class_id + increment))[0]
-        label = '{}-{}'.format(str(class_id).rjust(2, '0'), str(class_id+increment-1).rjust(2, '0'))
-        all_acc[label] = np.around(((y_pred[idxes]%class_num) == (y_true[idxes]%class_num)).sum()*100 / len(idxes), decimals=2)
-
-    # Old accuracy
-    idxes = np.where(y_true < nb_old)[0]
-    all_acc['old'] = 0 if len(idxes) == 0 else np.around(((y_pred[idxes]%class_num) == (y_true[idxes]%class_num)).sum()*100 / len(idxes),decimals=2)
-
-    # New accuracy
-    idxes = np.where(y_true >= nb_old)[0]
-    all_acc['new'] = np.around(((y_pred[idxes]%class_num) == (y_true[idxes]%class_num)).sum()*100 / len(idxes), decimals=2)
-
-    return all_acc
-
-
-
-def accuracy_binary(y_pred, y_true, nb_old, increment=2):
-    assert len(y_pred) == len(y_true), 'Data length error.'
-    all_acc = {}
-    all_acc['total'] = np.around((y_pred%2 == y_true%2).sum()*100 / len(y_true), decimals=2)
-
-    # Grouped accuracy
-    for class_id in range(0, np.max(y_true), increment):
-        idxes = np.where(np.logical_and(y_true >= class_id, y_true < class_id + increment))[0]
-        label = '{}-{}'.format(str(class_id).rjust(2, '0'), str(class_id+increment-1).rjust(2, '0'))
-        all_acc[label] = np.around(((y_pred[idxes]%2) == (y_true[idxes]%2)).sum()*100 / len(idxes), decimals=2)
-
-    # Old accuracy
-    idxes = np.where(y_true < nb_old)[0]
-    # all_acc['old'] = 0 if len(idxes) == 0 else np.around((y_pred[idxes] == y_true[idxes]).sum()*100 / len(idxes),decimals=2)
-    all_acc['old'] = 0 if len(idxes) == 0 else np.around(((y_pred[idxes]%2) == (y_true[idxes]%2)).sum()*100 / len(idxes),decimals=2)
-
-    # New accuracy
-    idxes = np.where(y_true >= nb_old)[0]
-    all_acc['new'] = np.around(((y_pred[idxes]%2) == (y_true[idxes]%2)).sum()*100 / len(idxes), decimals=2)
-
-    return all_acc
-
-
+def cls_acc(output, target, topk=1):
+    pred = output.topk(topk, 1, True, True)[1].t()
+    correct = pred.eq(target.view(1, -1).expand_as(pred))
+    acc = float(correct[:topk].reshape(-1).float().sum(
+        0, keepdim=True).cpu().numpy())
+    acc = 100 * acc / target.shape[0]
+    return acc

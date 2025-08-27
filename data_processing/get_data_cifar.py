@@ -18,7 +18,7 @@ device = "cuda:0" if torch.cuda.is_available() else "cpu"
 model, preprocess = clip.load('ViT-B/16', device)
 
 # Download the dataset
-root = os.path.expanduser("~/dataset")
+root = os.path.expanduser("/data2/hh/dataset")
 train = CIFAR100(root, download=True, train=True, transform=preprocess)
 
 def get_features(dataset):

@@ -81,10 +81,10 @@ def merge_images_labels(images, labels):
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
 model, preprocess = clip.load('ViT-B/16', device)
 #
-train_dir = os.path.join('/home/rookie/dataset/dtd/split', 'train')
+train_dir = os.path.join('/data2/hh/dataset/dtd/split', 'train')
 train = datasets.ImageFolder(train_dir, transform=preprocess)
 print(train.classes)
-test_dir = os.path.join('/home/rookie/dataset/dtd/split', 'test') # anchor set
+test_dir = os.path.join('/data2/hh/dataset/dtd/split', 'test') # anchor set
 test = datasets.ImageFolder(test_dir, transform=preprocess)
 
 def get_data(dataset):
@@ -120,6 +120,10 @@ for iter_dico in range(len(train.classes)):
     evalloader = torch.utils.data.DataLoader(test, batch_size=100, shuffle=False, num_workers=4)
     num_samples = len(prototypes[iter_dico])
     print(num_samples)
+
+    if num_samples < 17:
+
+        exit(1)
     mapped_prototypes = compute_features(model, evalloader, num_samples, 512, device)
     D = mapped_prototypes.T
     D = D / np.linalg.norm(D, axis=0)

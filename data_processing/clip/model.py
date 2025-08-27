@@ -171,7 +171,6 @@ class QuickGELU(nn.Module):
 class ResidualAttentionBlock(nn.Module):
     def __init__(self, d_model: int, n_head: int, attn_mask: torch.Tensor = None):
         super().__init__()
-
         self.attn = nn.MultiheadAttention(d_model, n_head)
         self.ln_1 = LayerNorm(d_model)
         self.mlp = nn.Sequential(OrderedDict([
@@ -196,6 +195,7 @@ class ResidualAttentionBlock(nn.Module):
         return self.attn(x, x, x, need_weights=True, attn_mask=self.attn_mask)[1]
 
     def forward(self, x: torch.Tensor, return_attention: bool=False): # MODIFIED
+        # add
         if return_attention: # ADDED
             return self.attention_weight(self.ln_1(x)) # ADDED
 
@@ -231,7 +231,6 @@ class VisionTransformer(nn.Module):
         self.class_embedding = nn.Parameter(scale * torch.randn(width))
         self.positional_embedding = nn.Parameter(scale * torch.randn((input_resolution // patch_size) ** 2 + 1, width))
         self.ln_pre = LayerNorm(width)
-
         self.transformer = Transformer(width, layers, heads)
 
         self.ln_post = LayerNorm(width)
@@ -253,7 +252,6 @@ class VisionTransformer(nn.Module):
 
         if self.proj is not None:
             x = x @ self.proj
-
         return x
 
 # ADDED

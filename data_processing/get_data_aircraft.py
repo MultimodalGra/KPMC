@@ -44,10 +44,10 @@ def merge_images_labels(images, labels):
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
 model, preprocess = clip.load('ViT-B/16', device)
 #
-train_dir = os.path.join('/home/shaokun/Downloads/Aircraftimage/', 'train')
+train_dir = os.path.join('/data2/hh/dataset/fgvc_aircraft', 'train')
 train = datasets.ImageFolder(train_dir, transform=preprocess)
 print(train.classes)
-test_dir = os.path.join('/home/shaokun/Downloads/Aircraftimage/', 'test') # anchor set
+test_dir = os.path.join('/data2/hh/dataset/fgvc_aircraft', 'test') # anchor set
 test = datasets.ImageFolder(test_dir, transform=preprocess)
 
 

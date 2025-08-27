@@ -62,11 +62,15 @@ class KLA(nn.Module):
         ####################################### topK
         topk, indices = torch.topk(attn, self.topk)
         attn_ = Variable(torch.zeros_like(attn), requires_grad=False)
-        attn_ = attn_.type(attn.dtype)
-        attn_ = attn_.to(attn.device)
+        attn_ = attn_.type(attn.dtype).to(attn.device)
         attn_ = attn_.scatter(-1, indices, topk)
-        #######################################
-        attn_ = attn_ / attn_.norm(dim=-1, keepdim=True) * attn_.shape[-1]
+
+        norm = attn_.norm(dim=-1, keepdim=True) + 1e-8  # 防止除以 0
+        attn_ = attn_ / norm * attn_.shape[-1]
+
+        if torch.isnan(attn_).any():
+            print("[!] Warning: attn_ has NaN before softmax")
+
         attn_ = attn_.softmax(dim=-1)
         attn_topk = self.attn_drop(attn_)
 
@@ -94,17 +98,17 @@ class WB(torch.nn.Module):
         print('num_knn', num_knn)
         max_dilation = 196 // max(num_knn)
         gcn_p_length = opt.gcn_len
-        # if opt.use_dilation:
-        #     self.LIN = Seq(*[Seq(Grapher(channels, num_knn[i], min(i // 4 + 1, max_dilation), conv, act, norm,
-        #                                       bias, stochastic, epsilon, 1, drop_path=dpr[i]),
-        #                               FFN(channels, channels * 4, act=act, drop_path=dpr[i])
-        #                               ) for i in range(self.n_blocks)])
-        # else:
-        #     self.LIN = Seq(*[Seq(Grapher(channels, num_knn[i], 1, conv, act, norm,
-        #                                       bias, stochastic, epsilon, 1, drop_path=dpr[i]),
-        #                               FFN(channels, channels * 4, act=act, drop_path=dpr[i])
-        #                               ) for i in range(self.n_blocks)])
-        # 32
+        if opt.use_dilation:
+            self.LIN = Seq(*[Seq(Grapher(channels, num_knn[i], min(i // 4 + 1, max_dilation), conv, act, norm,
+                                              bias, stochastic, epsilon, 1, drop_path=dpr[i]),
+                                      FFN(channels, channels * 4, act=act, drop_path=dpr[i])
+                                      ) for i in range(self.n_blocks)])
+        else:
+            self.LIN = Seq(*[Seq(Grapher(channels, num_knn[i], 1, conv, act, norm,
+                                              bias, stochastic, epsilon, 1, drop_path=dpr[i]),
+                                      FFN(channels, channels * 4, act=act, drop_path=dpr[i])
+                                      ) for i in range(self.n_blocks)])
+
         self.PG_1 = Seq(nn.Conv2d(channels, 32, 1, bias=True),  # 1024
                              nn.BatchNorm2d(32),
                              act_layer(act),
@@ -133,8 +137,8 @@ class WB(torch.nn.Module):
 
     def forward(self, inputs, q):
         x = inputs  # E0
-        # for i in range(self.n_blocks):
-        #     x = self.LIN[i](x)  # b 768 14 14
+        for i in range(self.n_blocks):
+            x = self.LIN[i](x)  # b 768 14 14
 
         x_pooling = F.adaptive_avg_pool2d(x, 1)  # b 768 1 1
         B, C, p1, p2 = x.shape  # B 768 14 14
@@ -151,8 +155,8 @@ class WB(torch.nn.Module):
     def inference(self, inputs):
 
         x = inputs
-        # for i in range(self.n_blocks):
-        #     x = self.LIN[i](x)  # b 768 14 14
+        for i in range(self.n_blocks):
+            x = self.LIN[i](x)  # b 768 14 14
 
         # print('x:', x.shape)
         x_pooling = F.adaptive_avg_pool2d(x, 1)  # b 768 1 1

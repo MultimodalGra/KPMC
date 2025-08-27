@@ -83,10 +83,9 @@ class PromptLearner_v2withCoop(nn.Module):
         assert cfg_imsize == clip_imsize, f"cfg_imsize ({cfg_imsize}) must equal to clip_imsize ({clip_imsize})"
         ctx_init = "This is a photo of a"
 
-        # use given words to initialize context vectors
         ctx_init = ctx_init.replace("_", " ")
         n_ctx = len(ctx_init.split(" "))
-        prompt = clip.tokenize(ctx_init)
+        prompt = clip.tokenize(ctx_init).to(device)
         with torch.no_grad():
             embedding = clip_model.token_embedding(prompt).type(dtype)
         ctx_vectors = embedding[0, 1: 1 + n_ctx, :]
@@ -104,20 +103,13 @@ class PromptLearner_v2withCoop(nn.Module):
         prompts = [prompt_prefix + " " + name + "." for name in classnames]
 
         tokenized_prompts = torch.cat([clip.tokenize(p) for p in prompts])
-
+        tokenized_prompts = tokenized_prompts.to(device)
         with torch.no_grad():
             embedding = clip_model.token_embedding(tokenized_prompts).type(dtype)
 
         self.register_buffer("token_prefix", embedding[:, :1, :])  # SOS
         self.register_buffer("token_suffix", embedding[:, 1 + n_ctx :, :])  # CLS, EOS
 
-        # classnames = [f"This is a photo of a {c}" for c in classnames]  # 把这句话变成可学习的向量
-        # name_lens = [len(_tokenizer.encode(name)) for name in classnames]
-        # prompts = [name + "." for name in classnames]
-        # print(prompts)
-        # tokenized_prompts = torch.cat([clip.tokenize(p) for p in prompts]).to(device)
-        # with torch.no_grad():
-        #     self.embedding = clip_model.token_embedding(tokenized_prompts).type(dtype)
         self.n_cls = n_cls
         self.n_ctx = n_ctx
         self.tokenized_prompts = tokenized_prompts  # torch.Tensor
@@ -125,8 +117,7 @@ class PromptLearner_v2withCoop(nn.Module):
         self.class_token_position = cfg.CLASS_TOKEN_POSITION
 
     def forward(self):
-        # prompts = self.embedding
-        # return prompts
+
         ctx = self.ctx
         if ctx.dim() == 2:
             ctx = ctx.unsqueeze(0).expand(self.n_cls, -1, -1)
@@ -369,7 +360,7 @@ class PromptLearner_ucfwithCoop(nn.Module):
         # use given words to initialize context vectors
         ctx_init = ctx_init.replace("_", " ")
         n_ctx = len(ctx_init.split(" "))
-        prompt = clip.tokenize(ctx_init)
+        prompt = clip.tokenize(ctx_init).to(device)
         with torch.no_grad():
             embedding = clip_model.token_embedding(prompt).type(dtype)
         ctx_vectors = embedding[0, 1: 1 + n_ctx, :]
@@ -386,21 +377,13 @@ class PromptLearner_ucfwithCoop(nn.Module):
 
         prompts = [prompt_prefix + " " + name + "." for name in classnames]
 
-        tokenized_prompts = torch.cat([clip.tokenize(p) for p in prompts])
+        tokenized_prompts = torch.cat([clip.tokenize(p) for p in prompts]).to(device)
 
         with torch.no_grad():
             embedding = clip_model.token_embedding(tokenized_prompts).type(dtype)
 
         self.register_buffer("token_prefix", embedding[:, :1, :])  # SOS
         self.register_buffer("token_suffix", embedding[:, 1 + n_ctx :, :])  # CLS, EOS
-
-        # classnames = [f"This is a photo of a {c}" for c in classnames]  # 把这句话变成可学习的向量
-        # name_lens = [len(_tokenizer.encode(name)) for name in classnames]
-        # prompts = [name + "." for name in classnames]
-        # print(prompts)
-        # tokenized_prompts = torch.cat([clip.tokenize(p) for p in prompts]).to(device)
-        # with torch.no_grad():
-        #     self.embedding = clip_model.token_embedding(tokenized_prompts).type(dtype)
         self.n_cls = n_cls
         self.n_ctx = n_ctx
         self.tokenized_prompts = tokenized_prompts  # torch.Tensor
@@ -408,8 +391,7 @@ class PromptLearner_ucfwithCoop(nn.Module):
         self.class_token_position = cfg.CLASS_TOKEN_POSITION
 
     def forward(self):
-        # prompts = self.embedding
-        # return prompts
+
         ctx = self.ctx
         if ctx.dim() == 2:
             ctx = ctx.unsqueeze(0).expand(self.n_cls, -1, -1)

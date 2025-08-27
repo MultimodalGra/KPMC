@@ -37,7 +37,7 @@ def get_logits(model, dataset, device):
         for images, labels in DataLoader(dataset, shuffle=False, batch_size=100, num_workers=4):
             # features = model.encode_image(images.to(device))
             outputs = model(images.to(device), target=labels.to(device).long(), p_target=None)
-            logits = outputs['logits']
+            logits = outputs['cluster_logits']
             all_logits.append(logits)
             all_labels.append(labels)
     return torch.cat(all_logits), torch.cat(all_labels)

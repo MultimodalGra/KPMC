@@ -8,8 +8,8 @@ import os
 def main():
     args = setup_parser().parse_args()
     param = load_json(args.config)
-    args = vars(args)  # Converting argparse Namespace to a dict.
-    args.update(param)  # Add parameters from json
+    args = vars(args)
+    args.update(param)
     train(args)
 
 def load_json(settings_path):

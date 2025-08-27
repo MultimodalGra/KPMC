@@ -121,9 +121,9 @@ class GATConv2d(nn.Module):
 
         self.fc = nn.Linear(out_channels,out_channels)
     def forward(self,x,edge_index,y=None):
-        nn_idx = edge_index[0]  # b,n,k  n个点的top k邻居
+        nn_idx = edge_index[0]
 
-        x = x.squeeze(-1).transpose(-1,-2) # x:(b,feature,num)-> (b,num,f)
+        x = x.squeeze(-1).transpose(-1,-2)
         feature = x.shape[2]
         batch_size, num_nodes, k = nn_idx.shape
         row = []
@@ -132,13 +132,12 @@ class GATConv2d(nn.Module):
         # For each sample in the batch
         for i in range(batch_size):
             for j in range(num_nodes):
-                # Node j's neighbors based on the KNN indices
-                neighbors = nn_idx[i, j]  # These are the k-nearest neighbors of node j
+                neighbors = nn_idx[i, j]
                 for neighbor in neighbors:
-                    row.append(j)  # The center node (j)
-                    col.append(neighbor)  # The neighboring node
+                    row.append(j)
+                    col.append(neighbor)
 
-        edge_index = torch.tensor([row, col], dtype=torch.long).to(nn_idx.device) # 2,num_edges
+        edge_index = torch.tensor([row, col], dtype=torch.long).to(nn_idx.device)
 
         x = x.reshape(-1,feature)
         x = self.gat_conv(x,edge_index)
@@ -156,9 +155,6 @@ class GATConv2d(nn.Module):
 
 
 class GraphConv2d(nn.Module):
-    """
-    Static graph convolution layer
-    """
     def __init__(self, in_channels, out_channels, conv='edge', act='relu', norm=None, bias=True):
         super(GraphConv2d, self).__init__()
         if conv == 'edge':
@@ -171,8 +167,6 @@ class GraphConv2d(nn.Module):
             self.gconv = GINConv2d(in_channels, out_channels, act, norm, bias)
         elif conv == 'gat':
             self.gconv = GATConv2d(in_channels,out_channels)
-        # elif conv == 'gated':
-        #     self.gconv = GatedGCNConv2d(in_channels,out_channels,act,norm,bias)
         else:
             raise NotImplementedError('conv:{} is not supported'.format(conv))
 
@@ -205,9 +199,6 @@ class DyGraphConv2d(GraphConv2d):
 
 
 class Grapher(nn.Module):
-    """
-    Grapher module with graph convolution and fc layers
-    """
     def __init__(self, in_channels, kernel_size=9, dilation=1, conv='edge', act='relu', norm=None,
                  bias=True,  stochastic=False, epsilon=0.0, r=1, n=196, drop_path=0.0, relative_pos=False):
         super(Grapher, self).__init__()

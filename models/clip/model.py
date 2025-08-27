@@ -1,3 +1,4 @@
+import os
 from collections import OrderedDict
 from typing import Tuple, Union
 
@@ -5,7 +6,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import nn
-
+import time
 
 class Bottleneck(nn.Module):
     expansion = 4
@@ -13,7 +14,6 @@ class Bottleneck(nn.Module):
     def __init__(self, inplanes, planes, stride=1):
         super().__init__()
 
-        # all conv layers have stride 1. an avgpool is performed after the second convolution when stride > 1
         self.conv1 = nn.Conv2d(inplanes, planes, 1, bias=False)
         self.bn1 = nn.BatchNorm2d(planes)
         self.conv2 = nn.Conv2d(planes, planes, 3, padding=1, bias=False)
@@ -26,7 +26,6 @@ class Bottleneck(nn.Module):
         self.stride = stride
 
         if stride > 1 or inplanes != planes * Bottleneck.expansion:
-            # downsampling layer is prepended with an avgpool, and the subsequent convolution has stride 1
             self.downsample = nn.Sequential(OrderedDict([
                 ("-1", nn.AvgPool2d(stride)),
                 ("0", nn.Conv2d(inplanes, planes * self.expansion, 1, stride=1, bias=False)),
@@ -86,12 +85,6 @@ class AttentionPool2d(nn.Module):
 
 
 class ModifiedResNet(nn.Module):
-    """
-    A ResNet class that is similar to torchvision's but contains the following changes:
-    - There are now 3 "stem" convolutions as opposed to 1, with an average pool instead of a max pool.
-    - Performs anti-aliasing strided convolutions, where an avgpool is prepended to convolutions with stride > 1
-    - The final pooling layer is a QKV attention instead of an average pool
-    """
 
     def __init__(self, layers, output_dim, heads, input_resolution=224, width=64):
         super().__init__()
@@ -158,7 +151,6 @@ class QuickGELU(nn.Module):
     def forward(self, x: torch.Tensor):
         return x * torch.sigmoid(1.702 * x)
 
-
 class ResidualAttentionBlock(nn.Module):
     def __init__(self, d_model: int, n_head: int, attn_mask: torch.Tensor = None):
         super().__init__()
@@ -179,21 +171,19 @@ class ResidualAttentionBlock(nn.Module):
 
     def attention_weight(self, x: torch.Tensor): # ADDED
         self.attn_mask = self.attn_mask.to(dtype=x.dtype, device=x.device) if self.attn_mask is not None else None
-        return self.attn(x, x, x, need_weights=True, attn_mask=self.attn_mask)[1]
+        return self.attn(x, x, x, need_weights=True, attn_mask=self.attn_mask,average_attn_weights=False)
 
-    # def forward(self, x: torch.Tensor):
-    #     x = x + self.attention(self.ln_1(x))
-    #     x = x + self.mlp(self.ln_2(x))
-    #     return x
 
     def forward(self, x: torch.Tensor, return_attention: bool=False): # MODIFIED
         if return_attention: # ADDED
             return self.attention_weight(self.ln_1(x)) # ADDED
 
-        x = x + self.attention(self.ln_1(x))
+        attn_out, attn_weights = self.attention_weight(self.ln_1(x))
+        self.attn.attn_probs = attn_weights
+        x = x + attn_out
         x = x + self.mlp(self.ln_2(x))
-        return x
 
+        return x
 
 class Transformer(nn.Module):
     def __init__(self, width: int, layers: int, heads: int, attn_mask: torch.Tensor = None):
@@ -227,13 +217,7 @@ class Transformer(nn.Module):
                     x = block(x)
             return x
 
-    # ADDED
     def forward_attention(self, x: torch.Tensor, instance_tokens=None, class_tokens=None):
-        # for index, layer in enumerate(self.resblocks):
-        #     if index == len(self.resblocks) - 1:
-        #         return layer(x, return_attention=True)
-        #     x = layer(x)
-
         if instance_tokens is None and class_tokens is None:
             for index, layer in enumerate(self.resblocks):
                 if index == len(self.resblocks) - 1:
@@ -283,10 +267,10 @@ class VisionTransformer(nn.Module):
         self.layers = layers
 
     def forward(self, x: torch.Tensor, instance_tokens=None, class_tokens=None, new_class_embedding=None):
-        x = self.conv1(x)  # shape = [*, width, grid, grid]
+        x = self.conv1(x)
 
-        x = x.reshape(x.shape[0], x.shape[1], -1)  # shape = [*, width, grid ** 2]
-        x = x.permute(0, 2, 1)  # shape = [*, grid ** 2, width]
+        x = x.reshape(x.shape[0], x.shape[1], -1)
+        x = x.permute(0, 2, 1)
 
         if new_class_embedding is None:
             x = torch.cat([self.class_embedding.to(x.dtype) + torch.zeros(x.shape[0], 1, x.shape[-1], dtype=x.dtype, device=x.device), x], dim=1)  # shape = [*, grid ** 2 + 1, width]
@@ -301,7 +285,7 @@ class VisionTransformer(nn.Module):
             map_class_tokens = torch.zeros(class_tokens.shape[0], x.shape[0], class_tokens.shape[2], x.shape[-1], dtype=x.dtype, device=x.device)
 
 
-        for i in range(self.layers): #self.layers
+        for i in range(self.layers):
             if instance_tokens is not None:
 
                 map_instance_tokens[i] = instance_tokens[i].to(x.dtype) + torch.zeros(x.shape[0], 1, x.shape[-1], dtype=x.dtype, device=x.device)
@@ -330,22 +314,17 @@ class VisionTransformer(nn.Module):
             x = self.transformer(x, map_instance_tokens, map_class_tokens)
         x = x.permute(1, 0, 2)  # LND -> NLD
 
-        # x = self.ln_post(x[:, 0, :])
-        #
-        # if self.proj is not None:
-        #     x = x @ self.proj
         x = self.ln_post(x)
         if self.proj is not None:
             x = torch.bmm(x, self.proj.expand(x.shape[0], self.proj.shape[0], self.proj.shape[1]))
-        # print(x.shape)
+
         return x
 
     # ADDED
     def forward_attention(self, x: torch.Tensor, instance_tokens=None, class_tokens=None, new_class_embedding=None):
-        x = self.conv1(x)  # shape = [*, width, grid, grid]
-        x = x.reshape(x.shape[0], x.shape[1], -1)  # shape = [*, width, grid ** 2]
-        x = x.permute(0, 2, 1)  # shape = [*, grid ** 2, width]
-        #####################################################################################
+        x = self.conv1(x)
+        x = x.reshape(x.shape[0], x.shape[1], -1)
+        x = x.permute(0, 2, 1)
 
         if new_class_embedding is None:
             x = torch.cat([self.class_embedding.to(x.dtype) + torch.zeros(x.shape[0], 1, x.shape[-1], dtype=x.dtype,
@@ -511,8 +490,6 @@ class CLIP(nn.Module):
         x = x.permute(1, 0, 2)  # LND -> NLD
         x = self.ln_final(x).type(self.dtype)
 
-        # x.shape = [batch_size, n_ctx, transformer.width]
-        # take features from the eot embedding (eot_token is the highest number in each sequence)
         x = x[torch.arange(x.shape[0]), text.argmax(dim=-1)] @ self.text_projection
 
         return x
@@ -593,5 +570,5 @@ def build_model(state_dict: dict):
             del state_dict[key]
 
     convert_weights(model)
-    model.load_state_dict(state_dict)
+    model.load_state_dict(state_dict,strict=False)
     return model.eval()
