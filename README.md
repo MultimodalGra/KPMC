@@ -1,5 +1,5 @@
 # KPMC
-Enhancing Pre-trained ViTs for Downstream Task Adaptation: A Locality-Aware Prompt Learning Method [ACM MM 24]
+Knowledge-aware Prompt for Few-shot Tuning with Multi-prototype Clustering
 
 
 
